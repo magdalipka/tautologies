@@ -14,6 +14,10 @@ eval (Not a) = not (eval a)
 eval (Implication a b) = eval b || not (eval a) && not (eval b)
 eval (Eq a b) = eval a && eval b || not (eval a) && not (eval b)
 
+isUnaryOperator :: Char -> Bool
+isUnaryOperator '!' = True
+isUnaryOperator _ = False
+
 isOperator :: Char -> Bool
 isOperator '*' = True
 isOperator '+' = True
@@ -31,6 +35,32 @@ isOperand :: Char -> Bool
 isOperand 'q' = True
 isOperand 'p' = True
 isOperand _ = False
+
+data State = Zero | One | Two
+
+validateExpression :: String -> State -> Int -> Bool
+validateExpression [] One _ = False
+validateExpression [] _ margins
+  | margins == 0 = True
+  | otherwise = False
+validateExpression (x : xs) Zero margins
+  | margins < 0 = False
+  | x == '(' = validateExpression xs Zero (margins + 1)
+  | isUnaryOperator x = validateExpression xs Two margins
+  | isOperand x = validateExpression xs One margins
+  | otherwise = False
+validateExpression (x : xs) One margins
+  | margins < 0 = False
+  | x == '(' = False
+  | x == ')' = validateExpression xs One (margins - 1)
+  | isOperator x = validateExpression xs Zero margins
+  | otherwise = False
+validateExpression (x : xs) Two margins
+  | margins < 0 = False
+  | x == '(' = False
+  | x == ')' = validateExpression xs One (margins - 1)
+  | isOperator x = validateExpression xs Zero margins
+  | otherwise = False
 
 buildTree :: String -> [String] -> TreeNode
 buildTree [] stack = Const True
