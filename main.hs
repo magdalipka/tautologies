@@ -30,12 +30,31 @@ singleTreeNode x _ = error "Incorrect singleTreeNode input"
 constTreeNode :: Char -> TreeNode
 constTreeNode = Const
 
+priority :: Char -> Int
+priority '!' = 5
+priority '+' = 4
+priority '*' = 3
+priority '>' = 2
+priority '#' = 1
+priority _ = error "Incorrect priority input"
+
 isUnaryOperator :: Char -> Bool
 isUnaryOperator '!' = True
 isUnaryOperator _ = False
 
 isDoubleOperator :: Char -> Bool
 isDoubleOperator x = isOperator x && not (isUnaryOperator x)
+
+isLeftJoiningOperator :: Char -> Bool
+isLeftJoiningOperator '+' = True
+isLeftJoiningOperator '*' = True
+isLeftJoiningOperator _ = False
+
+isRightJoiningOperator :: Char -> Bool
+isRightJoiningOperator '#' = True
+isRightJoiningOperator '>' = True
+isRightJoiningOperator '!' = True
+isRightJoiningOperator _ = False
 
 isOperator :: Char -> Bool
 isOperator '*' = True
@@ -97,3 +116,36 @@ buildTree (x : xs) stack
   where
     (doublePoppedStack, left, right) = popTwo stack
     (singlePoppedStack, child) = popOne stack
+
+infixToPostfix :: String -> [Char] -> String -> String
+infixToPostfix [] [] result = result
+infixToPostfix [] stack result = infixToPostfix [] (init stack) (result ++ [last stack])
+infixToPostfix (x : xs) stack result
+  | isOperand x = infixToPostfix xs stack (result ++ [x])
+  | x == '(' = infixToPostfix xs (stack ++ [x]) result
+  | isLeftJoiningOperator x = infixToPostfix xs (leftProcessedStack ++ [x]) leftProcessedResult
+  | isRightJoiningOperator x = infixToPostfix xs (rightProcessedStack ++ [x]) rightProcessedResult
+  | x == ')' = infixToPostfix xs (init bracketProcessedStack) bracketProcessedResult
+  | otherwise = ""
+  where
+    (leftProcessedStack, leftProcessedResult) = processLeftJoining x stack result
+    (rightProcessedStack, rightProcessedResult) = processRightJoining x stack result
+    (bracketProcessedStack, bracketProcessedResult) = processBracket stack result
+
+processLeftJoining :: Char -> [Char] -> String -> ([Char], String)
+processLeftJoining symbol [] result = ([], result)
+processLeftJoining symbol stack result
+  | priority (last stack) >= priority symbol = processLeftJoining symbol (init stack) (result ++ [last stack])
+  | otherwise = (stack, result)
+
+processRightJoining :: Char -> [Char] -> String -> ([Char], String)
+processRightJoining symbol [] result = ([], result)
+processRightJoining symbol stack result
+  | priority (last stack) > priority symbol = processLeftJoining symbol (init stack) (result ++ [last stack])
+  | otherwise = (stack, result)
+
+processBracket :: [Char] -> String -> ([Char], String)
+processBracket [] result = ([], result)
+processBracket stack result
+  | last stack == '(' = (stack, result)
+  | otherwise = processBracket (init stack) (result ++ [last stack])
