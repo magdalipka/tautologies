@@ -1,3 +1,8 @@
+module Expressions where
+
+import System.Environment (getArgs)
+import System.IO
+
 data TreeNode
   = Const Char
   | And TreeNode TreeNode
@@ -6,15 +11,15 @@ data TreeNode
   | Implication TreeNode TreeNode
   | Eq TreeNode TreeNode
 
-eval :: Bool -> Bool -> TreeNode -> Bool
-eval p q (Const 'p') = p
-eval p q (Const 'q') = q
-eval p q (And a b) = eval p q a && eval p q b
-eval p q (Or a b) = eval p q a || eval p q b
-eval p q (Not a) = not (eval p q a)
-eval p q (Implication a b) = eval p q a <= eval p q b
-eval p q (Eq a b) = eval p q a == eval p q b
-eval _ _ _ = error "Incorrect evaluation input"
+eval :: TreeNode -> (Bool, Bool) -> Bool
+eval (Const 'p') (p, q) = p
+eval (Const 'q') (p, q) = q
+eval (And a b) (p, q) = eval a (p, q) && eval b (p, q)
+eval (Or a b) (p, q) = eval a (p, q) || eval b (p, q)
+eval (Not a) (p, q) = not (eval a (p, q))
+eval (Implication a b) (p, q) = eval a (p, q) <= eval b (p, q)
+eval (Eq a b) (p, q) = eval a (p, q) == eval b (p, q)
+eval _ _ = error "Incorrect evaluation input"
 
 doubleTreeNode :: Char -> TreeNode -> TreeNode -> TreeNode
 doubleTreeNode '+' a b = Or a b
@@ -36,7 +41,9 @@ priority '+' = 4
 priority '*' = 3
 priority '>' = 2
 priority '#' = 1
-priority _ = error "Incorrect priority input"
+priority x
+  | isOperand x = 5
+  | otherwise = 0
 
 isUnaryOperator :: Char -> Bool
 isUnaryOperator '!' = True
@@ -76,28 +83,26 @@ isOperand _ = False
 
 data State = Zero | One | Two
 
-validateExpression :: String -> State -> Int -> Bool
-validateExpression [] One _ = False
-validateExpression [] _ margins
-  | margins == 0 = True
-  | otherwise = False
-validateExpression (x : xs) Zero margins
+validateExpression :: State -> Int -> String -> Bool
+validateExpression One margins [] = margins == 0
+validateExpression _ margins [] = False
+validateExpression Zero margins (x : xs)
   | margins < 0 = False
-  | x == '(' = validateExpression xs Zero (margins + 1)
-  | isUnaryOperator x = validateExpression xs Two margins
-  | isOperand x = validateExpression xs One margins
+  | x == '(' = validateExpression Zero (margins + 1) xs
+  | isUnaryOperator x = validateExpression Two margins xs
+  | isOperand x = validateExpression One margins xs
   | otherwise = False
-validateExpression (x : xs) One margins
+validateExpression One margins (x : xs)
   | margins < 0 = False
   | x == '(' = False
-  | x == ')' = validateExpression xs One (margins - 1)
-  | isOperator x = validateExpression xs Zero margins
+  | x == ')' = validateExpression One (margins - 1) xs
+  | isDoubleOperator x = validateExpression Zero margins xs
   | otherwise = False
-validateExpression (x : xs) Two margins
+validateExpression Two margins (x : xs)
   | margins < 0 = False
-  | x == '(' = False
-  | x == ')' = validateExpression xs One (margins - 1)
-  | isOperator x = validateExpression xs Zero margins
+  | x == '(' = validateExpression Zero (margins + 1) xs
+  | isUnaryOperator x = validateExpression Two margins xs
+  | isOperand x = validateExpression One margins xs
   | otherwise = False
 
 popOne :: [a] -> ([a], a)
@@ -106,26 +111,26 @@ popOne x = (init x, last x)
 popTwo :: [a] -> ([a], a, a)
 popTwo x = (init (init x), last (init x), last x)
 
-buildTree :: String -> [TreeNode] -> TreeNode
-buildTree [] stack = last stack
-buildTree (x : xs) stack
-  | isUnaryOperator x = buildTree xs (singlePoppedStack ++ [singleTreeNode x child])
-  | isDoubleOperator x = buildTree xs (doublePoppedStack ++ [doubleTreeNode x left right])
-  | isOperand x = buildTree xs (stack ++ [constTreeNode x])
+buildTree :: [TreeNode] -> String -> TreeNode
+buildTree stack [] = last stack
+buildTree stack (x : xs)
+  | isUnaryOperator x = buildTree (singlePoppedStack ++ [singleTreeNode x child]) xs
+  | isDoubleOperator x = buildTree (doublePoppedStack ++ [doubleTreeNode x left right]) xs
+  | isOperand x = buildTree (stack ++ [constTreeNode x]) xs
   | otherwise = error "Incorrect character."
   where
     (doublePoppedStack, left, right) = popTwo stack
     (singlePoppedStack, child) = popOne stack
 
-infixToPostfix :: String -> [Char] -> String -> String
-infixToPostfix [] [] result = result
-infixToPostfix [] stack result = infixToPostfix [] (init stack) (result ++ [last stack])
-infixToPostfix (x : xs) stack result
-  | isOperand x = infixToPostfix xs stack (result ++ [x])
-  | x == '(' = infixToPostfix xs (stack ++ [x]) result
-  | isLeftJoiningOperator x = infixToPostfix xs (leftProcessedStack ++ [x]) leftProcessedResult
-  | isRightJoiningOperator x = infixToPostfix xs (rightProcessedStack ++ [x]) rightProcessedResult
-  | x == ')' = infixToPostfix xs (init bracketProcessedStack) bracketProcessedResult
+infixToPostfix :: [Char] -> String -> String -> String
+infixToPostfix [] result [] = result
+infixToPostfix stack result [] = infixToPostfix (init stack) (result ++ [last stack]) []
+infixToPostfix stack result (x : xs)
+  | isOperand x = infixToPostfix stack (result ++ [x]) xs
+  | x == '(' = infixToPostfix (stack ++ [x]) result xs
+  | isLeftJoiningOperator x = infixToPostfix (leftProcessedStack ++ [x]) leftProcessedResult xs
+  | isRightJoiningOperator x = infixToPostfix (rightProcessedStack ++ [x]) rightProcessedResult xs
+  | x == ')' = infixToPostfix (init bracketProcessedStack) bracketProcessedResult xs
   | otherwise = ""
   where
     (leftProcessedStack, leftProcessedResult) = processLeftJoining x stack result
@@ -141,7 +146,7 @@ processLeftJoining symbol stack result
 processRightJoining :: Char -> [Char] -> String -> ([Char], String)
 processRightJoining symbol [] result = ([], result)
 processRightJoining symbol stack result
-  | priority (last stack) > priority symbol = processLeftJoining symbol (init stack) (result ++ [last stack])
+  | priority (last stack) > priority symbol = processRightJoining symbol (init stack) (result ++ [last stack])
   | otherwise = (stack, result)
 
 processBracket :: [Char] -> String -> ([Char], String)
@@ -149,3 +154,29 @@ processBracket [] result = ([], result)
 processBracket stack result
   | last stack == '(' = (stack, result)
   | otherwise = processBracket (init stack) (result ++ [last stack])
+
+multiplyWords :: [String] -> [String] -> [String]
+multiplyWords a b = (++) <$> a <*> b
+
+pairs :: [a] -> [(a, a)]
+pairs l = [(x, y) | x <- l, y <- l]
+
+iter :: (Int, a -> a) -> (a -> a)
+iter (1, f) x = x
+iter (n, f) x = f (iter (n - 1, f) x)
+
+allWords :: Int -> [String] -> [String]
+allWords n alphabet = iter (n, multiplyWords alphabet) alphabet
+
+isTautology :: TreeNode -> Bool
+isTautology t = all (eval t) (pairs [True, False])
+
+isExpressionACorrectTautology :: String -> Bool
+isExpressionACorrectTautology e = validateExpression Zero 0 e && isTautology (buildTree [] (infixToPostfix [] [] e))
+
+allTautologies :: Int -> [String]
+allTautologies n = filter isExpressionACorrectTautology (allWords n ["p", "q", "*", "+", ">", "#", "!", "(", ")"])
+
+main = do
+  n <- fmap (read . head) getArgs :: IO Int
+  print $ allTautologies n
