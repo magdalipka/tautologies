@@ -175,8 +175,12 @@ isExpressionACorrectTautology :: String -> Bool
 isExpressionACorrectTautology e = validateExpression Zero 0 e && isTautology (buildTree [] (infixToPostfix [] [] e))
 
 allTautologies :: Int -> [String]
-allTautologies n = filter isExpressionACorrectTautology (allWords n ["p", "q", "*", "+", ">", "#", "!", "(", ")"])
+allTautologies 0 = []
+allTautologies n = allTautologies (n - 1) ++ filter isExpressionACorrectTautology (allWords n ["p", "q", "*", "+", ">", "#", "!", "(", ")"])
 
 main = do
-  n <- fmap (read . head) getArgs :: IO Int
-  print $ allTautologies n
+  (maxLength : fileName : _) <- getArgs
+  let n = read maxLength :: Int
+  fileHandle <- openFile fileName WriteMode
+  hPrint fileHandle (allTautologies n)
+  hClose fileHandle
